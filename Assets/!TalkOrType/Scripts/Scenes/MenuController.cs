@@ -1,16 +1,16 @@
-using DG.Tweening;
+﻿using DG.Tweening;
 using RKS.TalkOrType.Core;
 using Steamworks;
 using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
+using Zenject;
 
 namespace RKS.TalkOrType.UI
 {
     sealed class MenuController : RKSBehaviour
     {
-        [Header("Main")]
         [SerializeField] private RectTransform logo;
         [SerializeField] private RectTransform buttonsContainer;
         [SerializeField] private RectTransform playContainer;
@@ -18,57 +18,92 @@ namespace RKS.TalkOrType.UI
         [SerializeField] private RectTransform creditsContainer;
         [SerializeField] private RectTransform steamContainer;
 
-        [Header("State Text")]
+        [SerializeField] private RectTransform lobbyLeftContainer;
+        [SerializeField] private RectTransform lobbyRightContainer;
+
+        [SerializeField] private GameObject leavePopup;
+
         [SerializeField] private TextMeshProUGUI stateText;
 
-        [Header("Steam")]
         [SerializeField] private RawImage steamAvatar;
         [SerializeField] private TextMeshProUGUI steamNicknameText;
-        private Friend playerData;
 
-        [Header("Animation")]
-        [SerializeField] private float moveDistance = 300f;
+        [SerializeField] private TMP_InputField joinInput;
+
         [SerializeField] private float duration = 0.6f;
         [SerializeField] private Ease ease = Ease.OutExpo;
 
+        private Friend playerData;
+
         private Vector2 logoStartPos;
-        private Vector3 logoStartScale;
-        private Vector2 buttonsStartOffscreen;
+        private Vector2 containersStartOffscreen;
         private Vector2 logoStartOffscreen;
         private Vector2 steamStartOffscreen;
+
+        private Vector2 lobbyLeftStart;
+        private Vector2 lobbyRightStart;
+
+        private Vector2 lobbyLeftOffscreen;
+        private Vector2 lobbyRightOffscreen;
 
         private RectTransform currentScreen;
         private bool isTransitioning;
 
+        [Inject] private AvatarService _avatarService;
+        [Inject] private LobbyManagerSteam _lobby;
+        [Inject] private LobbyController _lobbyController;
+
         protected override void OnReady()
         {
             playerData = new Friend(SteamClient.SteamId);
+
             LoadSteamData();
 
             logoStartPos = logo.anchoredPosition;
-            logoStartScale = logo.localScale;
 
             float screenWidth = Screen.width;
             float screenHeight = Screen.height;
 
             logoStartOffscreen = logoStartPos - Vector2.right * screenWidth;
-            buttonsStartOffscreen = buttonsContainer.anchoredPosition - Vector2.right * screenWidth;
+            containersStartOffscreen = buttonsContainer.anchoredPosition - Vector2.right * screenWidth;
             steamStartOffscreen = steamContainer.anchoredPosition - Vector2.up * screenHeight;
 
+            lobbyLeftStart = lobbyLeftContainer.anchoredPosition;
+            lobbyRightStart = lobbyRightContainer.anchoredPosition;
+
+            lobbyLeftOffscreen = lobbyLeftStart - Vector2.right * screenWidth;
+            lobbyRightOffscreen = lobbyRightStart + Vector2.right * screenWidth;
+
             logo.anchoredPosition = logoStartOffscreen;
-            buttonsContainer.anchoredPosition = buttonsStartOffscreen;
+            playContainer.anchoredPosition = containersStartOffscreen;
+            settingsContainer.anchoredPosition = containersStartOffscreen;
+            buttonsContainer.anchoredPosition = containersStartOffscreen;
             steamContainer.anchoredPosition = steamStartOffscreen;
+
+            lobbyLeftContainer.anchoredPosition = lobbyLeftOffscreen;
+            lobbyRightContainer.anchoredPosition = lobbyRightOffscreen;
+
+            leavePopup.SetActive(false);
 
             ShowStartup();
 
             SetState("v1.0");
+
+            _lobby.OnLobbyUpdated += OnLobbyCreated;
+            _lobby.OnLobbyLeft += HideLobby;
         }
 
         void ShowStartup()
         {
             logo.DOAnchorPos(logoStartPos, duration).SetEase(ease);
-            buttonsContainer.DOAnchorPos(buttonsStartOffscreen + Vector2.right * Screen.width, duration).SetEase(ease);
-            steamContainer.DOAnchorPos(steamStartOffscreen + Vector2.up * Screen.height, duration).SetEase(ease);
+
+            buttonsContainer
+                .DOAnchorPos(containersStartOffscreen + Vector2.right * Screen.width, duration)
+                .SetEase(ease);
+
+            steamContainer
+                .DOAnchorPos(steamStartOffscreen + Vector2.up * Screen.height, duration)
+                .SetEase(ease);
         }
 
         protected override void Update()
@@ -83,48 +118,90 @@ namespace RKS.TalkOrType.UI
         {
             steamNicknameText.text = playerData.Name;
 
-            var img = (await playerData.GetLargeAvatarAsync());
-            if (!img.HasValue) return;
+            steamAvatar.texture = null;
 
-            var i = img.Value;
-            var tex = new Texture2D((int)i.Width, (int)i.Height, TextureFormat.RGBA32, false);
+            var texture = await _avatarService.GetAvatar(playerData);
 
-            var flipped = new byte[i.Data.Length];
-            int row = (int)i.Width * 4;
-
-            for (int y = 0; y < i.Height; y++)
-                System.Array.Copy(i.Data, y * row, flipped, ((int)i.Height - y - 1) * row, row);
-
-            tex.LoadRawTextureData(flipped);
-            tex.Apply();
-
-            steamAvatar.texture = tex;
+            if (texture != null)
+                steamAvatar.texture = texture;
         }
 
         void HandleEscape()
         {
             if (isTransitioning) return;
 
+            if (leavePopup.activeSelf)
+            {
+                CloseLeavePopup();
+                return;
+            }
+
+            if (_lobby.CurrentLobby.HasValue)
+            {
+                ShowLeavePopup();
+                return;
+            }
+
             if (currentScreen != null)
             {
                 HideCurrentScreen();
-                return;
             }
+        }
+
+        public void OnClickCreateLobby()
+        {
+            _lobbyController.CreateLobby();
+        }
+
+        public void OnClickJoinLobby()
+        {
+            if (string.IsNullOrWhiteSpace(joinInput.text)) return;
+            _lobbyController.JoinLobby();
+        }
+
+        public void OnClickLeaveLobby()
+        {
+            ShowLeavePopup();
+        }
+
+        public void OnClickInvite()
+        {
+            _lobbyController.Invite();
+        }
+
+        public void OnConfirmLeave()
+        {
+            leavePopup.SetActive(false);
+            _lobbyController.LeaveLobby();
+        }
+
+        public void OnCancelLeave()
+        {
+            CloseLeavePopup();
+        }
+
+        void ShowLeavePopup()
+        {
+            leavePopup.SetActive(true);
+            leavePopup.transform.localScale = Vector3.zero;
+            leavePopup.transform.DOScale(1f, 0.25f).SetEase(Ease.OutBack);
+        }
+
+        void CloseLeavePopup()
+        {
+            leavePopup.transform
+                .DOScale(0f, 0.2f)
+                .SetEase(Ease.InBack)
+                .OnComplete(() => leavePopup.SetActive(false));
         }
 
         public void ShowPlay() => ShowScreen(playContainer, "Play");
         public void ShowSettings() => ShowScreen(settingsContainer, "Settings");
         public void ShowCredits() => ShowScreen(creditsContainer, "Credits");
 
-        void SetState(string text)
-        {
-            stateText.text = text;
-        }
-
         void ShowScreen(RectTransform screen, string stateName)
         {
-            if (isTransitioning)
-                return;
+            if (isTransitioning) return;
 
             isTransitioning = true;
 
@@ -134,11 +211,11 @@ namespace RKS.TalkOrType.UI
             currentScreen = screen;
 
             buttonsContainer
-                .DOAnchorPos(buttonsStartOffscreen + Vector2.right * Screen.width - Vector2.up * moveDistance, duration)
+                .DOAnchorPos(containersStartOffscreen + Vector2.left * Screen.width, duration)
                 .SetEase(ease);
 
             screen
-                .DOAnchorPos(screen.anchoredPosition + Vector2.up * moveDistance, duration)
+                .DOAnchorPos(screen.anchoredPosition + Vector2.right * Screen.width, duration)
                 .SetEase(ease);
 
             SetState(stateName);
@@ -148,13 +225,12 @@ namespace RKS.TalkOrType.UI
 
         void HideCurrentScreen()
         {
-            if (isTransitioning || currentScreen == null)
-                return;
+            if (isTransitioning || currentScreen == null) return;
 
             isTransitioning = true;
 
             buttonsContainer
-                .DOAnchorPos(buttonsStartOffscreen + Vector2.right * Screen.width, duration)
+                .DOAnchorPos(containersStartOffscreen + Vector2.right * Screen.width, duration)
                 .SetEase(ease);
 
             HideScreen(currentScreen);
@@ -168,8 +244,73 @@ namespace RKS.TalkOrType.UI
         void HideScreen(RectTransform screen)
         {
             screen
-                .DOAnchorPos(screen.anchoredPosition - Vector2.up * moveDistance, duration)
+                .DOAnchorPos(screen.anchoredPosition + Vector2.left * Screen.width, duration)
                 .SetEase(ease);
+        }
+
+        void OnLobbyCreated()
+        {
+            if (!_lobby.CurrentLobby.HasValue) return;
+            ShowLobby();
+        }
+
+        void ShowLobby()
+        {
+            if (isTransitioning) return;
+
+            isTransitioning = true;
+
+            playContainer
+                .DOAnchorPos(containersStartOffscreen + Vector2.left * Screen.width, duration)
+                .SetEase(ease);
+
+            steamContainer
+                .DOAnchorPos(steamStartOffscreen + Vector2.down * Screen.width, duration)
+                .SetEase(ease);
+
+            lobbyLeftContainer
+                .DOAnchorPos(lobbyLeftStart, duration)
+                .SetEase(ease);
+
+            lobbyRightContainer
+                .DOAnchorPos(lobbyRightStart, duration)
+                .SetEase(ease);
+
+            SetState("Lobby");
+
+            DOVirtual.DelayedCall(duration, () => isTransitioning = false);
+        }
+
+        void HideLobby()
+        {
+            if (isTransitioning) return;
+
+            isTransitioning = true;
+
+            playContainer
+                .DOAnchorPos(containersStartOffscreen + Vector2.right * Screen.width, duration)
+                .SetEase(ease);
+
+            steamContainer
+                .DOAnchorPos(steamStartOffscreen + Vector2.up * Screen.height, duration)
+                .SetEase(ease);
+
+            lobbyLeftContainer
+                .DOAnchorPos(lobbyLeftOffscreen, duration)
+                .SetEase(ease);
+
+            lobbyRightContainer
+                .DOAnchorPos(lobbyRightOffscreen, duration)
+                .SetEase(ease);
+
+            SetState("Play");
+
+            DOVirtual.DelayedCall(duration, () => isTransitioning = false);
+        }
+
+        void SetState(string text)
+        {
+            stateText.text = text;
         }
     }
 }
