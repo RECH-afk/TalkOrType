@@ -6,11 +6,10 @@ using Steamworks;
 public class LobbyController : MonoBehaviour
 {
     [SerializeField] private TMP_InputField codeInput;
-    [SerializeField] private GameObject renamePopup;
-    [SerializeField] private TMP_InputField renameInput;
     [SerializeField] private TextMeshProUGUI codeText;
     [SerializeField] private Transform content;
     [SerializeField] private GameObject playerPrefab;
+    [SerializeField] private TextMeshProUGUI lobbyNameText;
 
     [Inject] private LobbyManagerSteam _lobby;
     [Inject] private DiContainer _container;
@@ -19,8 +18,6 @@ public class LobbyController : MonoBehaviour
     {
         _lobby.OnLobbyUpdated += Refresh;
         _lobby.OnLobbyLeft += Clear;
-
-        renamePopup.SetActive(false);
     }
 
     public void CreateLobby()
@@ -44,28 +41,12 @@ public class LobbyController : MonoBehaviour
         _lobby.Invite();
     }
 
-    public void OpenRename()
-    {
-        if (!_lobby.IsHost) return;
-        renamePopup.SetActive(true);
-        renameInput.text = "";
-    }
-
-    public void ConfirmRename()
-    {
-        if (!_lobby.IsHost) return;
-        _lobby.SetLobbyName(renameInput.text);
-        renamePopup.SetActive(false);
-    }
-
-    public void CancelRename()
-    {
-        renamePopup.SetActive(false);
-    }
-
     private void Refresh()
     {
+        if (!_lobby.CurrentLobby.HasValue) return;
+
         codeText.text = _lobby.GetLobbyCode();
+        lobbyNameText.text = _lobby.CurrentLobby.Value.GetData("name");
 
         foreach (Transform t in content)
             Destroy(t.gameObject);
@@ -86,5 +67,11 @@ public class LobbyController : MonoBehaviour
     {
         foreach (Transform t in content)
             Destroy(t.gameObject);
+    }
+
+    public void CopyCode()
+    {
+        GUIUtility.systemCopyBuffer = codeText.text;
+        Debug.Log("Код скопирован");
     }
 }

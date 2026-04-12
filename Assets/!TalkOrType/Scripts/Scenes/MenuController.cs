@@ -22,6 +22,12 @@ namespace RKS.TalkOrType.UI
         [SerializeField] private RectTransform lobbyRightContainer;
 
         [SerializeField] private GameObject leavePopup;
+        [SerializeField] private GameObject kickPopup;
+        [SerializeField] private GameObject unavailableLobbyPopup;
+
+        [SerializeField] private GameObject renamePopup;
+        [SerializeField] private TMP_InputField renameInput;
+        [SerializeField] private TextMeshProUGUI lobbyNameText;
 
         [SerializeField] private TextMeshProUGUI stateText;
 
@@ -90,7 +96,9 @@ namespace RKS.TalkOrType.UI
             SetState("v1.0");
 
             _lobby.OnLobbyUpdated += OnLobbyCreated;
+            _lobby.OnLobbyUpdated += OnLobbyUpdated;
             _lobby.OnLobbyLeft += HideLobby;
+            _lobby.OnKicked += ShowKickMessage;
         }
 
         void ShowStartup()
@@ -133,6 +141,18 @@ namespace RKS.TalkOrType.UI
             if (leavePopup.activeSelf)
             {
                 CloseLeavePopup();
+                return;
+            }
+
+            if (kickPopup.activeSelf)
+            {
+                CloseKickPopup();
+                return;
+            }
+
+            if (unavailableLobbyPopup.activeSelf)
+            {
+                CloseLobbyUnavailablePopup();
                 return;
             }
 
@@ -194,6 +214,34 @@ namespace RKS.TalkOrType.UI
                 .SetEase(Ease.InBack)
                 .OnComplete(() => leavePopup.SetActive(false));
         }
+        void ShowKickPopup()
+        {
+            kickPopup.SetActive(true);
+            kickPopup.transform.localScale = Vector3.zero;
+            kickPopup.transform.DOScale(1f, 0.25f).SetEase(Ease.OutBack);
+        }
+
+         public void CloseKickPopup()
+        {
+            kickPopup.transform
+                .DOScale(0f, 0.2f)
+                .SetEase(Ease.InBack)
+                .OnComplete(() => kickPopup.SetActive(false));
+        }
+        void ShowLobbyUnavailablePopup()
+        {
+            unavailableLobbyPopup.SetActive(true);
+            unavailableLobbyPopup.transform.localScale = Vector3.zero;
+            unavailableLobbyPopup.transform.DOScale(1f, 0.25f).SetEase(Ease.OutBack);
+        }
+
+        public void CloseLobbyUnavailablePopup()
+        {
+            unavailableLobbyPopup.transform
+                .DOScale(0f, 0.2f)
+                .SetEase(Ease.InBack)
+                .OnComplete(() => unavailableLobbyPopup.SetActive(false));
+        }
 
         public void ShowPlay() => ShowScreen(playContainer, "Play");
         public void ShowSettings() => ShowScreen(settingsContainer, "Settings");
@@ -246,6 +294,32 @@ namespace RKS.TalkOrType.UI
             screen
                 .DOAnchorPos(screen.anchoredPosition + Vector2.left * Screen.width, duration)
                 .SetEase(ease);
+        }
+        public void OpenRename()
+        {
+            if (!_lobby.IsHost) return;
+
+            renamePopup.SetActive(true);
+
+            renameInput.text = _lobby.CurrentLobby.Value.GetData("name");
+        }
+        public void ConfirmRename()
+        {
+            if (!_lobby.IsHost) return;
+
+            string newName = renameInput.text;
+
+            if (string.IsNullOrWhiteSpace(newName))
+                return;
+
+            _lobby.SetLobbyName(newName);
+            lobbyNameText.text = newName;
+
+            renamePopup.SetActive(false);
+        }
+        public void CancelRename()
+        {
+            renamePopup.SetActive(false);
         }
 
         void OnLobbyCreated()
@@ -306,6 +380,18 @@ namespace RKS.TalkOrType.UI
             SetState("Play");
 
             DOVirtual.DelayedCall(duration, () => isTransitioning = false);
+        }
+        void ShowKickMessage(bool byAdmin)
+        {
+            if (byAdmin)
+                ShowKickPopup();
+            else
+                ShowLobbyUnavailablePopup();
+        }
+        void OnLobbyUpdated()
+        {
+            if (!_lobby.CurrentLobby.HasValue) return;
+            lobbyNameText.text = _lobby.CurrentLobby.Value.GetData("name");
         }
 
         void SetState(string text)

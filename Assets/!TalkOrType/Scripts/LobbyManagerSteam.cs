@@ -19,21 +19,34 @@ public class LobbyManagerSteam : IInitializable
 
     public event Action OnLobbyUpdated;
     public event Action OnLobbyLeft;
+    public event Action<bool> OnKicked;
 
     public void Initialize()
     {
         SteamMatchmaking.OnLobbyEntered += OnEntered;
-        SteamMatchmaking.OnLobbyMemberJoined += (_, __) => Refresh();
-        SteamMatchmaking.OnLobbyMemberLeave += (_, __) => Refresh();
+        SteamMatchmaking.OnLobbyMemberJoined += (lobby, member) =>
+        {
+            if (!CurrentLobby.HasValue) return;
+            if (lobby.Id != CurrentLobby.Value.Id) return;
 
+            Refresh();
+        };
+        SteamMatchmaking.OnLobbyMemberLeave += (lobby, member) =>
+        {
+            if (!CurrentLobby.HasValue) return;
+            if (lobby.Id != CurrentLobby.Value.Id) return;
+
+            Refresh();
+        };
         SteamFriends.OnGameLobbyJoinRequested += OnInvite;
+        SteamMatchmaking.OnLobbyDataChanged += (lobby) =>
+        {
+            if (CurrentLobby.HasValue && lobby.Id == CurrentLobby.Value.Id)
+                Refresh();
+        };
 
         _network.OnMessage += OnMessage;
     }
-
-    // =========================
-    // CREATE
-    // =========================
 
     public async void CreateLobby()
     {
@@ -48,7 +61,7 @@ public class LobbyManagerSteam : IInitializable
         CurrentLobby = lobby;
 
         string code = GenerateCode();
-        string lobbyName = "ЛОББИ " + SteamClient.Name;
+        string lobbyName = $"Лобби {SteamClient.Name}";
 
         CurrentLobby.Value.SetPublic();
         CurrentLobby.Value.SetJoinable(true);
@@ -60,10 +73,6 @@ public class LobbyManagerSteam : IInitializable
 
         Refresh();
     }
-
-    // =========================
-    // JOIN
-    // =========================
 
     public async void JoinByCode(string code)
     {
@@ -84,6 +93,14 @@ public class LobbyManagerSteam : IInitializable
     private async void JoinLobbyInternal(SteamId lobbyId)
     {
         var lobby = await SteamMatchmaking.JoinLobbyAsync(lobbyId);
+
+        var kicked = lobby.Value.GetData($"kicked_{SteamClient.SteamId}");
+
+        if (kicked == "1")
+        {
+            Debug.Log("Ты кикнут и не можешь зайти");
+            return;
+        }
 
         if (!lobby.HasValue)
         {
@@ -110,10 +127,6 @@ public class LobbyManagerSteam : IInitializable
         SteamFriends.OpenGameInviteOverlay(CurrentLobby.Value.Id);
     }
 
-    // =========================
-    // LEAVE
-    // =========================
-
     public void LeaveLobby()
     {
         if (!CurrentLobby.HasValue) return;
@@ -132,10 +145,6 @@ public class LobbyManagerSteam : IInitializable
         OnLobbyLeft?.Invoke();
     }
 
-    // =========================
-    // DATA
-    // =========================
-
     public void SetLobbyName(string name)
     {
         if (!IsHost || !CurrentLobby.HasValue) return;
@@ -148,12 +157,18 @@ public class LobbyManagerSteam : IInitializable
         return CurrentLobby?.GetData("code");
     }
 
-    // =========================
-    // PLAYERS
-    // =========================
-
     private void Refresh()
     {
+        if (CurrentLobby.HasValue)
+        {
+            var owner = CurrentLobby.Value.Owner;
+
+            if (owner.Id == 0)
+            {
+                LeaveLobby();
+                return;
+            }
+        }
         if (!CurrentLobby.HasValue) return;
 
         var newList = new List<Friend>();
@@ -165,10 +180,6 @@ public class LobbyManagerSteam : IInitializable
 
         OnLobbyUpdated?.Invoke();
     }
-
-    // =========================
-    // KICK
-    // =========================
 
     public void Kick(SteamId id)
     {
@@ -185,17 +196,25 @@ public class LobbyManagerSteam : IInitializable
         var kicked = CurrentLobby.Value.GetData($"kicked_{SteamClient.SteamId}");
 
         if (kicked == "1")
+        {
+            OnKicked?.Invoke(true);
             LeaveLobby();
+        }
     }
-
-    // =========================
-    // NETWORK
-    // =========================
 
     private void OnMessage(SteamId sender, string msg)
     {
-        if (msg == "KICK" || msg == "HOST_LEFT")
+        if (msg == "KICK")
+        {
+            OnKicked?.Invoke(true);
             LeaveLobby();
+        }
+
+        if (msg == "HOST_LEFT")
+        {
+            OnKicked?.Invoke(false);
+            LeaveLobby();
+        }
     }
 
     private void OnEntered(Lobby lobby)
@@ -204,10 +223,6 @@ public class LobbyManagerSteam : IInitializable
         CheckKick();
         Refresh();
     }
-
-    // =========================
-    // UTILS
-    // =========================
 
     private string GenerateCode()
     {
