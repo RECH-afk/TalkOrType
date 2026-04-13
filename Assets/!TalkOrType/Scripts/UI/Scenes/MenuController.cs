@@ -222,17 +222,17 @@ namespace RKS.TalkOrType.UI
         }
         void ShowKickPopup()
         {
-            notEnoughPlayersLobbyPopup.SetActive(true);
-            notEnoughPlayersLobbyPopup.transform.localScale = Vector3.zero;
-            notEnoughPlayersLobbyPopup.transform.DOScale(1f, 0.25f).SetEase(Ease.OutBack);
+            kickPopup.SetActive(true);
+            kickPopup.transform.localScale = Vector3.zero;
+            kickPopup.transform.DOScale(1f, 0.25f).SetEase(Ease.OutBack);
         }
 
          public void CloseKickPopup()
         {
-            notEnoughPlayersLobbyPopup.transform
+            kickPopup.transform
                 .DOScale(0f, 0.2f)
                 .SetEase(Ease.InBack)
-                .OnComplete(() => notEnoughPlayersLobbyPopup.SetActive(false));
+                .OnComplete(() => kickPopup.SetActive(false));
         }
 
         void ShowNotEnoughPlayersPopup()

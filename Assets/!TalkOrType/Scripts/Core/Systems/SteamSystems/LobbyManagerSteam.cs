@@ -67,7 +67,7 @@ namespace RKS.TalkOrType.Core.Managers
             CurrentLobby = lobby;
 
             string code = GenerateCode();
-            string lobbyName = $"Лобби {SteamClient.Name}";
+            string lobbyName = $"Lobby {SteamClient.Name}";
 
             CurrentLobby.Value.SetPublic();
             CurrentLobby.Value.SetJoinable(true);
@@ -104,7 +104,6 @@ namespace RKS.TalkOrType.Core.Managers
 
             if (kicked == "1")
             {
-                Debug.Log("Ты кикнут и не можешь зайти");
                 return;
             }
 
