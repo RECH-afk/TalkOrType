@@ -4383,6 +4383,8 @@ MonoBehaviour:
   steamContainer: {fileID: 2910498387132281305}
   lobbyLeftContainer: {fileID: 1549154818}
   lobbyRightContainer: {fileID: 1797535287}
+  settingsLeftContainer: {fileID: 1549154818}
+  settingsRightContainer: {fileID: 1797535287}
   leavePopup: {fileID: 1335461684}
   kickPopup: {fileID: 13207324}
   unavailableLobbyPopup: {fileID: 2041052864}
