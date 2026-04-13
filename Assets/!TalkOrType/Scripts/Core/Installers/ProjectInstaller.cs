@@ -1,6 +1,7 @@
 using RKS.TalkOrType.Core.Managers;
 using UnityEngine;
 using Zenject;
+using RKS.TalkOrType.Core.Network;
 
 namespace RKS.TalkOrType.Core.Installers
 {

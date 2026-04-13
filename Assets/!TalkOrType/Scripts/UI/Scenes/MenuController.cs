@@ -6,6 +6,8 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using Zenject;
+using RKS.TalkOrType.Core.Managers;
+using RKS.TalkOrType.Core.Network;
 
 namespace RKS.TalkOrType.UI
 {
@@ -24,6 +26,7 @@ namespace RKS.TalkOrType.UI
         [SerializeField] private GameObject leavePopup;
         [SerializeField] private GameObject kickPopup;
         [SerializeField] private GameObject unavailableLobbyPopup;
+        [SerializeField] private GameObject notEnoughPlayersLobbyPopup;
 
         [SerializeField] private GameObject renamePopup;
         [SerializeField] private TMP_InputField renameInput;
@@ -56,6 +59,7 @@ namespace RKS.TalkOrType.UI
         private bool isTransitioning;
 
         [Inject] private AvatarService _avatarService;
+        [Inject] private NetworkService _network;
         [Inject] private LobbyManagerSteam _lobby;
         [Inject] private LobbyController _lobbyController;
 
@@ -93,7 +97,7 @@ namespace RKS.TalkOrType.UI
 
             ShowStartup();
 
-            SetState("v1.0");
+            SetState("v0.1");
 
             _lobby.OnLobbyUpdated += OnLobbyCreated;
             _lobby.OnLobbyUpdated += OnLobbyUpdated;
@@ -144,7 +148,7 @@ namespace RKS.TalkOrType.UI
                 return;
             }
 
-            if (kickPopup.activeSelf)
+            if (notEnoughPlayersLobbyPopup.activeSelf)
             {
                 CloseKickPopup();
                 return;
@@ -186,6 +190,8 @@ namespace RKS.TalkOrType.UI
 
         public void OnClickInvite()
         {
+            Debug.Log("Invite clicked");
+
             _lobbyController.Invite();
         }
 
@@ -216,18 +222,34 @@ namespace RKS.TalkOrType.UI
         }
         void ShowKickPopup()
         {
-            kickPopup.SetActive(true);
-            kickPopup.transform.localScale = Vector3.zero;
-            kickPopup.transform.DOScale(1f, 0.25f).SetEase(Ease.OutBack);
+            notEnoughPlayersLobbyPopup.SetActive(true);
+            notEnoughPlayersLobbyPopup.transform.localScale = Vector3.zero;
+            notEnoughPlayersLobbyPopup.transform.DOScale(1f, 0.25f).SetEase(Ease.OutBack);
         }
 
          public void CloseKickPopup()
         {
-            kickPopup.transform
+            notEnoughPlayersLobbyPopup.transform
                 .DOScale(0f, 0.2f)
                 .SetEase(Ease.InBack)
-                .OnComplete(() => kickPopup.SetActive(false));
+                .OnComplete(() => notEnoughPlayersLobbyPopup.SetActive(false));
         }
+
+        void ShowNotEnoughPlayersPopup()
+        {
+            notEnoughPlayersLobbyPopup.SetActive(true);
+            notEnoughPlayersLobbyPopup.transform.localScale = Vector3.zero;
+            notEnoughPlayersLobbyPopup.transform.DOScale(1f, 0.25f).SetEase(Ease.OutBack);
+        }
+
+        public void CloseNotEnoughPlayersPopup()
+        {
+            notEnoughPlayersLobbyPopup.transform
+                .DOScale(0f, 0.2f)
+                .SetEase(Ease.InBack)
+                .OnComplete(() => notEnoughPlayersLobbyPopup.SetActive(false));
+        }
+
         void ShowLobbyUnavailablePopup()
         {
             unavailableLobbyPopup.SetActive(true);
@@ -326,6 +348,21 @@ namespace RKS.TalkOrType.UI
         {
             if (!_lobby.CurrentLobby.HasValue) return;
             ShowLobby();
+        }
+
+        public void StartGame()
+        {
+            if (_lobby.Players.Count < 2)
+            {
+                ShowNotEnoughPlayersPopup();
+                return;
+            }
+
+            if (!_lobby.IsHost) return;
+
+            _network.SendToAll(_lobby.CurrentLobby.Value, "START_GAME");
+
+            Transition?.LoadScene("IsGameScene");
         }
 
         void ShowLobby()

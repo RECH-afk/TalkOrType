@@ -4,49 +4,52 @@ using System.Text;
 using Zenject;
 using UnityEngine;
 
-public class NetworkService : IInitializable, ITickable
+namespace RKS.TalkOrType.Core.Network
 {
-    public event Action<SteamId, string> OnMessage;
-
-    public void Initialize()
+    public class NetworkService : IInitializable, ITickable
     {
-        Debug.Log("Network ready");
-    }
+        public event Action<SteamId, string> OnMessage;
 
-    public void Tick()
-    {
-        uint size;
-
-        while (SteamNetworking.IsP2PPacketAvailable(out size))
+        public void Initialize()
         {
-            byte[] buffer = new byte[size];
+            Debug.Log("Network ready");
+        }
 
-            uint msgSize = 0;
-            SteamId sender = default;
+        public void Tick()
+        {
+            uint size;
 
-            if (SteamNetworking.ReadP2PPacket(buffer, ref msgSize, ref sender))
+            while (SteamNetworking.IsP2PPacketAvailable(out size))
             {
-                string msg = Encoding.UTF8.GetString(buffer, 0, (int)msgSize);
-                OnMessage?.Invoke(sender, msg);
+                byte[] buffer = new byte[size];
+
+                uint msgSize = 0;
+                SteamId sender = default;
+
+                if (SteamNetworking.ReadP2PPacket(buffer, ref msgSize, ref sender))
+                {
+                    string msg = Encoding.UTF8.GetString(buffer, 0, (int)msgSize);
+                    OnMessage?.Invoke(sender, msg);
+                }
             }
         }
-    }
 
-    public void Send(SteamId id, string msg)
-    {
-        var data = Encoding.UTF8.GetBytes(msg);
+        public void Send(SteamId id, string msg)
+        {
+            var data = Encoding.UTF8.GetBytes(msg);
 
-        SteamNetworking.SendP2PPacket(
-            id,
-            data,
-            data.Length,
-            (int)P2PSend.Reliable
-        );
-    }
+            SteamNetworking.SendP2PPacket(
+                id,
+                data,
+                data.Length,
+                (int)P2PSend.Reliable
+            );
+        }
 
-    public void SendToAll(Steamworks.Data.Lobby lobby, string msg)
-    {
-        foreach (var p in lobby.Members)
-            Send(p.Id, msg);
+        public void SendToAll(Steamworks.Data.Lobby lobby, string msg)
+        {
+            foreach (var p in lobby.Members)
+                Send(p.Id, msg);
+        }
     }
 }
