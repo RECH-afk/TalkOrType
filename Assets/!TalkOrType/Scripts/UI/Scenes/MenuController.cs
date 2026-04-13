@@ -381,6 +381,10 @@ namespace RKS.TalkOrType.UI
 
             isTransitioning = true;
 
+            buttonsContainer
+                .DOAnchorPos(containersStartOffscreen + Vector2.left * Screen.width, duration)
+                .SetEase(ease);
+
             playContainer
                 .DOAnchorPos(containersStartOffscreen + Vector2.left * Screen.width, duration)
                 .SetEase(ease);
@@ -407,6 +411,10 @@ namespace RKS.TalkOrType.UI
             if (isTransitioning) return;
 
             isTransitioning = true;
+
+            buttonsContainer
+                .DOAnchorPos(containersStartOffscreen + Vector2.left * Screen.width, duration)
+                .SetEase(ease);
 
             playContainer
                 .DOAnchorPos(containersStartOffscreen + Vector2.right * Screen.width, duration)

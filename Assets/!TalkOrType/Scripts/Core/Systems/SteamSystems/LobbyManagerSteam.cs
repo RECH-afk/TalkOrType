@@ -101,23 +101,11 @@ namespace RKS.TalkOrType.Core.Managers
         {
             var lobby = await SteamMatchmaking.JoinLobbyAsync(lobbyId);
 
-            var kicked = lobby.Value.GetData($"kicked_{SteamClient.SteamId}");
-
-            if (kicked == "1")
-            {
-                return;
-            }
-
             if (!lobby.HasValue)
             {
                 Debug.LogError("Join failed");
                 return;
             }
-
-            CurrentLobby = lobby;
-
-            CheckKick();
-            Refresh();
         }
 
         private void OnInvite(Lobby lobby, SteamId friend)
@@ -165,6 +153,8 @@ namespace RKS.TalkOrType.Core.Managers
 
         private void Refresh()
         {
+            if (!CurrentLobby.HasValue) return;
+
             var kicked = CurrentLobby.Value.GetData($"kicked_{SteamClient.SteamId}");
 
             if (kicked == "1")
@@ -173,17 +163,6 @@ namespace RKS.TalkOrType.Core.Managers
                 LeaveLobby();
                 return;
             }
-            if (CurrentLobby.HasValue)
-            {
-                var owner = CurrentLobby.Value.Owner;
-
-                if (owner.Id == 0)
-                {
-                    LeaveLobby();
-                    return;
-                }
-            }
-            if (!CurrentLobby.HasValue) return;
 
             var newList = new List<Friend>();
 
@@ -203,18 +182,6 @@ namespace RKS.TalkOrType.Core.Managers
             _network.Send(id, "KICK");
         }
 
-        private void CheckKick()
-        {
-            if (!CurrentLobby.HasValue) return;
-
-            var kicked = CurrentLobby.Value.GetData($"kicked_{SteamClient.SteamId}");
-
-            if (kicked == "1")
-            {
-                OnKicked?.Invoke(true);
-                LeaveLobby();
-            }
-        }
 
         private void OnMessage(SteamId sender, string msg)
         {
@@ -240,16 +207,20 @@ namespace RKS.TalkOrType.Core.Managers
 
         private void OnEntered(Lobby lobby)
         {
+            var kicked = lobby.GetData($"kicked_{SteamClient.SteamId}");
+
+            if (kicked == "1")
+            {
+                lobby.Leave();
+                OnKicked?.Invoke(true);
+                return;
+            }
+
             CurrentLobby = lobby;
 
-            CheckKick();
-
-            if (!CurrentLobby.HasValue)
-                return;
+            Refresh();
 
             OnLobbyEntered?.Invoke();
-
-            Refresh();
         }
 
         private string GenerateCode()
