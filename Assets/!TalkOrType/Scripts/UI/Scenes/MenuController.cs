@@ -23,6 +23,9 @@ namespace RKS.TalkOrType.UI
         [SerializeField] private RectTransform lobbyLeftContainer;
         [SerializeField] private RectTransform lobbyRightContainer;
 
+        [SerializeField] private RectTransform settingsLeftContainer;
+        [SerializeField] private RectTransform settingsRightContainer;
+
         [SerializeField] private GameObject leavePopup;
         [SerializeField] private GameObject kickPopup;
         [SerializeField] private GameObject unavailableLobbyPopup;
@@ -55,6 +58,12 @@ namespace RKS.TalkOrType.UI
         private Vector2 lobbyLeftOffscreen;
         private Vector2 lobbyRightOffscreen;
 
+        private Vector2 settingsLeftStart;
+        private Vector2 settingsRightStart;
+
+        private Vector2 settingsLeftOffscreen;
+        private Vector2 settingsRightOffscreen;
+
         private RectTransform currentScreen;
         private bool isTransitioning;
 
@@ -84,6 +93,12 @@ namespace RKS.TalkOrType.UI
             lobbyLeftOffscreen = lobbyLeftStart - Vector2.right * screenWidth;
             lobbyRightOffscreen = lobbyRightStart + Vector2.right * screenWidth;
 
+            settingsLeftStart = settingsLeftContainer.anchoredPosition;
+            settingsRightStart = settingsRightContainer.anchoredPosition;
+
+            settingsLeftOffscreen = settingsLeftStart - Vector2.right * screenWidth;
+            settingsRightOffscreen = settingsRightStart + Vector2.right * screenWidth;
+
             logo.anchoredPosition = logoStartOffscreen;
             playContainer.anchoredPosition = containersStartOffscreen;
             settingsContainer.anchoredPosition = containersStartOffscreen;
@@ -93,13 +108,15 @@ namespace RKS.TalkOrType.UI
             lobbyLeftContainer.anchoredPosition = lobbyLeftOffscreen;
             lobbyRightContainer.anchoredPosition = lobbyRightOffscreen;
 
+            settingsLeftContainer.anchoredPosition = settingsLeftOffscreen;
+            settingsRightContainer.anchoredPosition = settingsRightOffscreen;
+
             leavePopup.SetActive(false);
 
             ShowStartup();
 
             SetState("v0.1");
-
-            _lobby.OnLobbyUpdated += OnLobbyCreated;
+            _lobby.OnLobbyEntered += ShowLobby;
             _lobby.OnLobbyUpdated += OnLobbyUpdated;
             _lobby.OnLobbyLeft += HideLobby;
             _lobby.OnKicked += ShowKickMessage;
@@ -266,7 +283,6 @@ namespace RKS.TalkOrType.UI
         }
 
         public void ShowPlay() => ShowScreen(playContainer, "Play");
-        public void ShowSettings() => ShowScreen(settingsContainer, "Settings");
         public void ShowCredits() => ShowScreen(creditsContainer, "Credits");
 
         void ShowScreen(RectTransform screen, string stateName)
@@ -344,13 +360,7 @@ namespace RKS.TalkOrType.UI
             renamePopup.SetActive(false);
         }
 
-        void OnLobbyCreated()
-        {
-            if (!_lobby.CurrentLobby.HasValue) return;
-            ShowLobby();
-        }
-
-        public void StartGame()
+        public async void StartGame()
         {
             if (_lobby.Players.Count < 2)
             {
@@ -360,8 +370,8 @@ namespace RKS.TalkOrType.UI
 
             if (!_lobby.IsHost) return;
 
+            await System.Threading.Tasks.Task.Delay(200);
             _network.SendToAll(_lobby.CurrentLobby.Value, "START_GAME");
-
             Transition?.LoadScene("IsGameScene");
         }
 
@@ -418,6 +428,59 @@ namespace RKS.TalkOrType.UI
 
             DOVirtual.DelayedCall(duration, () => isTransitioning = false);
         }
+        public void ShowSettings()
+        {
+            if (isTransitioning) return;
+
+            isTransitioning = true;
+
+            buttonsContainer
+                .DOAnchorPos(containersStartOffscreen + Vector2.left * Screen.width, duration)
+                .SetEase(ease);
+
+            steamContainer
+                .DOAnchorPos(steamStartOffscreen + Vector2.down * Screen.width, duration)
+                .SetEase(ease);
+
+            settingsLeftContainer
+                .DOAnchorPos(settingsLeftStart, duration)
+                .SetEase(ease);
+
+            settingsRightContainer
+                .DOAnchorPos(settingsRightStart, duration)
+                .SetEase(ease);
+
+            SetState("Settings");
+
+            DOVirtual.DelayedCall(duration, () => isTransitioning = false);
+        }
+        public void HideSettings()
+        {
+            if (isTransitioning) return;
+
+            isTransitioning = true;
+
+            buttonsContainer
+                .DOAnchorPos(containersStartOffscreen + Vector2.right * Screen.width, duration)
+                .SetEase(ease);
+
+            steamContainer
+                .DOAnchorPos(steamStartOffscreen + Vector2.up * Screen.height, duration)
+                .SetEase(ease);
+
+            settingsLeftContainer
+                .DOAnchorPos(settingsLeftOffscreen, duration)
+                .SetEase(ease);
+
+            settingsRightContainer
+                .DOAnchorPos(settingsRightOffscreen, duration)
+                .SetEase(ease);
+
+            SetState("Play");
+
+            DOVirtual.DelayedCall(duration, () => isTransitioning = false);
+        }
+
         void ShowKickMessage(bool byAdmin)
         {
             if (byAdmin)

@@ -25,6 +25,7 @@ namespace RKS.TalkOrType.Core.Managers
 
         public event Action OnLobbyUpdated;
         public event Action OnLobbyLeft;
+        public event Action OnLobbyEntered;
         public event Action<bool> OnKicked;
 
         public void Initialize()
@@ -233,12 +234,21 @@ namespace RKS.TalkOrType.Core.Managers
             {
                 transition?.LoadScene("IsGameScene");
             }
+
+            Debug.Log($"MSG: {msg} from {sender}");
         }
 
         private void OnEntered(Lobby lobby)
         {
             CurrentLobby = lobby;
+
             CheckKick();
+
+            if (!CurrentLobby.HasValue)
+                return;
+
+            OnLobbyEntered?.Invoke();
+
             Refresh();
         }
 

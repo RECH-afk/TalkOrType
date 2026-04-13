@@ -13,6 +13,12 @@ namespace RKS.TalkOrType.Core.Network
         public void Initialize()
         {
             Debug.Log("Network ready");
+
+            SteamNetworking.OnP2PSessionRequest += (SteamId id) =>
+            {
+                Debug.Log($"Accept P2P: {id}");
+                SteamNetworking.AcceptP2PSessionWithUser(id);
+            };
         }
 
         public void Tick()
@@ -49,7 +55,12 @@ namespace RKS.TalkOrType.Core.Network
         public void SendToAll(Steamworks.Data.Lobby lobby, string msg)
         {
             foreach (var p in lobby.Members)
+            {
+                if (p.Id == SteamClient.SteamId) continue;
+                SteamNetworking.AcceptP2PSessionWithUser(p.Id);
+
                 Send(p.Id, msg);
+            }
         }
     }
 }
