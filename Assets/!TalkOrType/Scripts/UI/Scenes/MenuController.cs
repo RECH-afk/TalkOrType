@@ -30,6 +30,7 @@ namespace RKS.TalkOrType.UI
         [SerializeField] private GameObject kickPopup;
         [SerializeField] private GameObject unavailableLobbyPopup;
         [SerializeField] private GameObject notEnoughPlayersLobbyPopup;
+        [SerializeField] private GameObject steamInitErrorPopup;
 
         [SerializeField] private GameObject renamePopup;
         [SerializeField] private TMP_InputField renameInput;
@@ -74,6 +75,13 @@ namespace RKS.TalkOrType.UI
 
         protected override void OnReady()
         {
+
+            if (!SteamClient.IsValid)
+            {
+                ShowSteamError();
+                return;
+            }
+
             playerData = new Friend(SteamClient.SteamId);
 
             LoadSteamData();
@@ -115,11 +123,12 @@ namespace RKS.TalkOrType.UI
 
             ShowStartup();
 
-            SetState("v0.1");
+
             _lobby.OnLobbyEntered += ShowLobby;
             _lobby.OnLobbyUpdated += OnLobbyUpdated;
             _lobby.OnLobbyLeft += HideLobby;
             _lobby.OnKicked += ShowKickMessage;
+            _lobby.OnUnavailable += ShowLobbyUnavailablePopup;
         }
 
         void ShowStartup()
@@ -216,6 +225,26 @@ namespace RKS.TalkOrType.UI
         {
             leavePopup.SetActive(false);
             _lobbyController.LeaveLobby();
+        }
+
+        void ShowSteamError()
+        {
+            steamInitErrorPopup.SetActive(true);
+            steamInitErrorPopup.transform.localScale = Vector3.zero;
+            steamInitErrorPopup.transform.DOScale(1f, 0.25f).SetEase(Ease.OutBack);
+
+            logo.gameObject.SetActive(false);
+            buttonsContainer.gameObject.SetActive(false);
+            playContainer.gameObject.SetActive(false);
+            settingsContainer.gameObject.SetActive(false);
+            creditsContainer.gameObject.SetActive(false);
+            steamContainer.gameObject.SetActive(false);
+
+            lobbyLeftContainer.gameObject.SetActive(false);
+            lobbyRightContainer.gameObject.SetActive(false);
+
+            settingsLeftContainer.gameObject.SetActive(false);
+            settingsRightContainer.gameObject.SetActive(false);
         }
 
         public void OnCancelLeave()
@@ -360,7 +389,7 @@ namespace RKS.TalkOrType.UI
             renamePopup.SetActive(false);
         }
 
-        public async void StartGame()
+        public void StartGame()
         {
             if (_lobby.Players.Count < 2)
             {
@@ -370,9 +399,7 @@ namespace RKS.TalkOrType.UI
 
             if (!_lobby.IsHost) return;
 
-            await System.Threading.Tasks.Task.Delay(200);
-            _network.SendToAll(_lobby.CurrentLobby.Value, "START_GAME");
-            Transition?.LoadScene("IsGameScene");
+            _lobby.StartGame();
         }
 
         void ShowLobby()
@@ -500,6 +527,11 @@ namespace RKS.TalkOrType.UI
         {
             if (!_lobby.CurrentLobby.HasValue) return;
             lobbyNameText.text = _lobby.CurrentLobby.Value.GetData("name");
+        }
+
+        public void QuitGame()
+        {
+            Application.Quit();
         }
 
         void SetState(string text)

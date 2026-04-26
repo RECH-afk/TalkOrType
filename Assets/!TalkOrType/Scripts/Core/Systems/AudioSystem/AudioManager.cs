@@ -38,7 +38,7 @@ namespace RKS.TalkOrType.Core.Managers
             LoadLibraries();
             CreateMusicSources();
 
-            Debug.Log("[AudioManager] Initialized successfully via Zenject.");
+            Debug.Log("[AudioManager] I'm ready!");
         }
 
         #region Initialization
@@ -102,7 +102,7 @@ namespace RKS.TalkOrType.Core.Managers
         {
             if (!soundMap.TryGetValue(soundName, out var data))
             {
-                Debug.LogWarning($"[AudioManager] Sound not found: {soundName}");
+                Debug.LogWarning($"[AudioManager] I couldn't find that sound: {soundName}");
                 return null;
             }
 

@@ -1,15 +1,20 @@
 using Steamworks;
 using Steamworks.Data;
 using System;
-using RKS.TalkOrType.Core;
 using System.Collections.Generic;
 using Zenject;
 using UnityEngine;
 using RKS.TalkOrType.Core.Network;
-using RKS.TalkOrType.Core.Managers;
 
 namespace RKS.TalkOrType.Core.Managers
 {
+    public enum LobbyState
+    {
+        Lobby,
+        Starting,
+        Game
+    }
+
     public class LobbyManagerSteam : IInitializable
     {
         [Inject] private NetworkService _network;
@@ -27,30 +32,19 @@ namespace RKS.TalkOrType.Core.Managers
         public event Action OnLobbyLeft;
         public event Action OnLobbyEntered;
         public event Action<bool> OnKicked;
+        public event Action OnUnavailable;
+
+        private bool _sceneLoaded = false;
+        private bool _isGameStarting = false;
 
         public void Initialize()
         {
             SteamMatchmaking.OnLobbyEntered += OnEntered;
-            SteamMatchmaking.OnLobbyMemberJoined += (lobby, member) =>
-            {
-                if (!CurrentLobby.HasValue) return;
-                if (lobby.Id != CurrentLobby.Value.Id) return;
+            SteamMatchmaking.OnLobbyMemberJoined += OnMemberChanged;
+            SteamMatchmaking.OnLobbyMemberLeave += OnMemberChanged;
+            SteamMatchmaking.OnLobbyDataChanged += OnLobbyDataChanged;
 
-                Refresh();
-            };
-            SteamMatchmaking.OnLobbyMemberLeave += (lobby, member) =>
-            {
-                if (!CurrentLobby.HasValue) return;
-                if (lobby.Id != CurrentLobby.Value.Id) return;
-
-                Refresh();
-            };
             SteamFriends.OnGameLobbyJoinRequested += OnInvite;
-            SteamMatchmaking.OnLobbyDataChanged += (lobby) =>
-            {
-                if (CurrentLobby.HasValue && lobby.Id == CurrentLobby.Value.Id)
-                    Refresh();
-            };
 
             _network.OnMessage += OnMessage;
         }
@@ -67,16 +61,12 @@ namespace RKS.TalkOrType.Core.Managers
 
             CurrentLobby = lobby;
 
-            string code = GenerateCode();
-            string lobbyName = $"Lobby {SteamClient.Name}";
-
             CurrentLobby.Value.SetPublic();
             CurrentLobby.Value.SetJoinable(true);
 
-            CurrentLobby.Value.SetData("code", code);
-            CurrentLobby.Value.SetData("name", lobbyName);
-
-            Debug.Log($"Lobby created: {lobbyName}");
+            CurrentLobby.Value.SetData("code", GenerateCode());
+            CurrentLobby.Value.SetData("name", $"Lobby {SteamClient.Name}");
+            CurrentLobby.Value.SetData("state", "lobby");
 
             Refresh();
         }
@@ -94,24 +84,7 @@ namespace RKS.TalkOrType.Core.Managers
                 return;
             }
 
-            JoinLobbyInternal(list[0].Id);
-        }
-
-        private async void JoinLobbyInternal(SteamId lobbyId)
-        {
-            var lobby = await SteamMatchmaking.JoinLobbyAsync(lobbyId);
-
-            if (!lobby.HasValue)
-            {
-                Debug.LogError("Join failed");
-                return;
-            }
-        }
-
-        private void OnInvite(Lobby lobby, SteamId friend)
-        {
-            Debug.Log($"Invite from {friend}");
-            JoinLobbyInternal(lobby.Id);
+            await SteamMatchmaking.JoinLobbyAsync(list[0].Id);
         }
 
         public void Invite()
@@ -121,12 +94,129 @@ namespace RKS.TalkOrType.Core.Managers
             SteamFriends.OpenGameInviteOverlay(CurrentLobby.Value.Id);
         }
 
+        private async void OnInvite(Lobby lobby, SteamId friend)
+        {
+            await SteamMatchmaking.JoinLobbyAsync(lobby.Id);
+        }
+
+        private void OnEntered(Lobby lobby)
+        {
+            var state = lobby.GetData("state");
+
+            if (state == "game")
+            {
+                var allowed = lobby.GetData($"allowed_{SteamClient.SteamId}");
+
+                if (allowed != "1")
+                {
+                    Debug.Log("Not allowed to join (game already started)");
+
+                    lobby.Leave();
+                    OnUnavailable.Invoke();
+                    return;
+                }
+            }
+
+            CurrentLobby = lobby;
+
+            Refresh();
+            OnLobbyEntered?.Invoke();
+
+            HandleState(lobby);
+        }
+
+        private void OnMemberChanged(Lobby lobby, Friend member)
+        {
+            if (!CurrentLobby.HasValue) return;
+            if (lobby.Id != CurrentLobby.Value.Id) return;
+
+            Refresh();
+        }
+
+        private void OnLobbyDataChanged(Lobby lobby)
+        {
+            if (GetState() == LobbyState.Game)
+            {
+                var allowed = lobby.GetData($"allowed_{SteamClient.SteamId}");
+
+                if (allowed != "1")
+                {
+                    Debug.Log("Late kick (not allowed)");
+
+                    LeaveLobby();
+                    OnKicked?.Invoke(false);
+                    return;
+                }
+            }
+
+            if (!CurrentLobby.HasValue) return;
+            if (lobby.Id != CurrentLobby.Value.Id) return;
+
+            HandleState(lobby);
+            Refresh();
+        }
+
+        public LobbyState GetState()
+        {
+            if (!CurrentLobby.HasValue) return LobbyState.Lobby;
+
+            var state = CurrentLobby.Value.GetData("state");
+
+            return state switch
+            {
+                "starting" => LobbyState.Starting,
+                "game" => LobbyState.Game,
+                _ => LobbyState.Lobby
+            };
+        }
+
+        private void HandleState(Lobby lobby)
+        {
+            var state = lobby.GetData("state");
+
+            if (state == "starting" && !_isGameStarting)
+            {
+                _isGameStarting = true;
+
+                Debug.Log("Game starting...");
+
+                transition?.LoadScene("IsGameScene");
+            }
+
+            if (state == "game" && !_sceneLoaded)
+            {
+                _sceneLoaded = true;
+                transition?.LoadScene("IsGameScene");
+            }
+        }
+
+        public async void StartGame()
+        {
+            if (!IsHost || !CurrentLobby.HasValue) return;
+            if (_players.Count < 2) return;
+
+            var lobby = CurrentLobby.Value;
+
+            foreach (var p in _players)
+            {
+                lobby.SetData($"allowed_{p.Id}", "1");
+            }
+
+            lobby.SetData("state", "starting");
+
+            await System.Threading.Tasks.Task.Delay(1000);
+
+            lobby.SetData("state", "game");
+
+            lobby.SetJoinable(false);
+        }
+
         public void LeaveLobby()
         {
             if (!CurrentLobby.HasValue) return;
 
             if (IsHost)
-                _network.SendToAll(CurrentLobby.Value, "HOST_LEFT");
+                CurrentLobby.Value.SetData("state", "closed");
 
             CurrentLobby.Value.Leave();
             ClearLobby();
@@ -136,28 +226,27 @@ namespace RKS.TalkOrType.Core.Managers
         {
             CurrentLobby = null;
             _players.Clear();
+            _isGameStarting = false;
+
             OnLobbyLeft?.Invoke();
         }
 
-        public void SetLobbyName(string name)
+        public void Kick(SteamId id)
         {
             if (!IsHost || !CurrentLobby.HasValue) return;
 
-            CurrentLobby.Value.SetData("name", name);
+            CurrentLobby.Value.SetData($"kick_{id}", "1");
         }
 
-        public string GetLobbyCode()
+        private void OnMessage(SteamId sender, NetMessage msg)
         {
-            return CurrentLobby?.GetData("code");
         }
 
         private void Refresh()
         {
             if (!CurrentLobby.HasValue) return;
 
-            var kicked = CurrentLobby.Value.GetData($"kicked_{SteamClient.SteamId}");
-
-            if (kicked == "1")
+            if (CurrentLobby.Value.GetData($"kick_{SteamClient.SteamId}") == "1")
             {
                 OnKicked?.Invoke(true);
                 LeaveLobby();
@@ -174,58 +263,19 @@ namespace RKS.TalkOrType.Core.Managers
             OnLobbyUpdated?.Invoke();
         }
 
-        public void Kick(SteamId id)
+        public void SetLobbyName(string name)
         {
             if (!IsHost || !CurrentLobby.HasValue) return;
 
-            CurrentLobby.Value.SetData($"kicked_{id}", "1");
-            _network.Send(id, "KICK");
+            CurrentLobby.Value.SetData("name", name);
         }
 
-
-        private void OnMessage(SteamId sender, string msg)
-        {
-            if (msg == "KICK")
-            {
-                OnKicked?.Invoke(true);
-                LeaveLobby();
-            }
-
-            if (msg == "HOST_LEFT")
-            {
-                OnKicked?.Invoke(false);
-                LeaveLobby();
-            }
-
-            if (msg == "START_GAME")
-            {
-                transition?.LoadScene("IsGameScene");
-            }
-
-            Debug.Log($"MSG: {msg} from {sender}");
-        }
-
-        private void OnEntered(Lobby lobby)
-        {
-            var kicked = lobby.GetData($"kicked_{SteamClient.SteamId}");
-
-            if (kicked == "1")
-            {
-                lobby.Leave();
-                OnKicked?.Invoke(true);
-                return;
-            }
-
-            CurrentLobby = lobby;
-
-            Refresh();
-
-            OnLobbyEntered?.Invoke();
-        }
+        public string GetLobbyCode() => CurrentLobby?.GetData("code");
 
         private string GenerateCode()
         {
             const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZ123456789";
+
             string code = "";
 
             for (int i = 0; i < 6; i++)

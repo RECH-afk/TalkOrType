@@ -53,7 +53,11 @@ namespace RKS.TalkOrType.UI
         public void OnPointerEnter(PointerEventData eventData)
         {
             ScaleTo(startScale * hoverScale, duration, hoverEase);
-            Audio.PlayOneShot(onPointerEnterSoundName);
+
+            if (!string.IsNullOrWhiteSpace(onPointerEnterSoundName))
+            {
+                Audio.PlayOneShot(onPointerEnterSoundName);
+            }
         }
 
         public void OnPointerExit(PointerEventData eventData)
@@ -64,7 +68,11 @@ namespace RKS.TalkOrType.UI
         public void OnPointerDown(PointerEventData eventData)
         {
             ScaleTo(startScale * pressScale, duration * 0.8f, pressEase);
-            Audio.Play(onClickSoundName);
+
+            if (!string.IsNullOrWhiteSpace(onClickSoundName))
+            {
+                Audio.Play(onClickSoundName);
+            }
         }
 
         public void OnPointerUp(PointerEventData eventData)

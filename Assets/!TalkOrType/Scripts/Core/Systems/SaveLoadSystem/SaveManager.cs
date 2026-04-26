@@ -7,60 +7,40 @@ namespace RKS.TalkOrType.Core.Managers
 {
     public class SaveManager : RKSBehaviour
     {
-        [Header("File Configuration")]
-        [SerializeField] private string fileName = "DD_Data.rkst";
+        [SerializeField] private string fileName = "RKS_Data.rkst";
 
         private string filePath;
+        private string backupPath;
+        private string tempPath;
+
         private readonly char[] rechAlphabet = { 'R', 'E', 'C', 'H' };
 
         public GameData.Data CurrentData { get; private set; }
 
+        private bool _dirty;
+
         protected override void OnInjected()
         {
             filePath = Path.Combine(Application.persistentDataPath, fileName);
-            Debug.Log($"[SaveManager] Initialized at {filePath}");
+            backupPath = filePath + ".bak";
+            tempPath = filePath + ".tmp";
 
             CurrentData = LoadInternal();
         }
+
         public void Write(GameData.Data data)
         {
-            if (data == null)
-            {
-                Debug.LogWarning("[SaveManager] Save(data) called with null -> creating default.");
-                data = new GameData.Data();
-            }
-
-            CurrentData = data;
-            WriteToFile(CurrentData);
-            Debug.Log("[SaveManager] Data saved successfully (via parameter).");
+            CurrentData = data ?? new GameData.Data();
+            _dirty = true;
+            SaveIfNeeded();
         }
 
         public void Write()
         {
-            if (CurrentData == null)
-            {
-                Debug.LogWarning("[SaveManager] No data found, creating default...");
-                CurrentData = new GameData.Data();
-            }
-
-            WriteToFile(CurrentData);
-            Debug.Log("[SaveManager] Data saved successfully (via CurrentData).");
+            CurrentData ??= new GameData.Data();
+            _dirty = true;
+            SaveIfNeeded();
         }
-
-        private void WriteToFile(GameData.Data data)
-        {
-            try
-            {
-                string json = JsonUtility.ToJson(data, true);
-                string rechData = ConvertJsonToRech(json);
-                File.WriteAllText(filePath, rechData);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[SaveManager] Failed to save data: {ex.Message}");
-            }
-        }
-
 
         public GameData.Data Load()
         {
@@ -71,82 +51,141 @@ namespace RKS.TalkOrType.Core.Managers
         public void ResetToDefault()
         {
             CurrentData = new GameData.Data();
-            Write();
-            Debug.Log("[SaveManager] Reset to default.");
+            _dirty = true;
+            SaveIfNeeded();
         }
 
-        private GameData.Data LoadInternal()
+        void SaveIfNeeded()
+        {
+            if (!_dirty) return;
+
+            WriteToFile(CurrentData);
+            _dirty = false;
+        }
+
+        void WriteToFile(GameData.Data data)
+        {
+            try
+            {
+                string json = JsonUtility.ToJson(data, true);
+                string rech = Encode(json);
+
+                if (File.Exists(filePath))
+                    File.Copy(filePath, backupPath, true);
+
+                File.WriteAllText(tempPath, rech);
+
+                if (File.Exists(filePath))
+                    File.Delete(filePath);
+
+                File.Move(tempPath, filePath);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[SaveManager] Save failed: {ex.Message}");
+            }
+        }
+
+        GameData.Data LoadInternal()
         {
             if (!File.Exists(filePath))
-            {
-                Debug.LogWarning("[SaveManager] No save file found, creating default...");
-                var def = new GameData.Data();
-                SaveDefault(def);
-                return def;
-            }
+                return CreateDefault();
 
             try
             {
-                string rechData = File.ReadAllText(filePath);
-                string json = ConvertRechToJson(rechData);
+                string rech = File.ReadAllText(filePath);
+                string json = Decode(rech);
+
                 var data = JsonUtility.FromJson<GameData.Data>(json);
-                Debug.Log("[SaveManager] Data loaded successfully.");
+
+                if (data == null)
+                    return CreateDefault();
+
+                if (data.version != GameData.VERSION)
+                {
+                    Debug.LogWarning("[SaveManager] Version mismatch → reset to default");
+
+                    return CreateDefault();
+                }
+
                 return data;
             }
             catch (Exception ex)
             {
-                Debug.LogError("[SaveManager] Failed to load data: " + ex.Message);
-                var def = new GameData.Data();
-                SaveDefault(def);
-                return def;
+                Debug.LogWarning($"[SaveManager] Load failed → backup: {ex.Message}");
+
+                return LoadBackupOrDefault();
             }
         }
 
-        private void SaveDefault(GameData.Data data)
+        GameData.Data LoadBackupOrDefault()
         {
-            string json = JsonUtility.ToJson(data, true);
-            string rechData = ConvertJsonToRech(json);
-            File.WriteAllText(filePath, rechData);
+            try
+            {
+                if (File.Exists(backupPath))
+                {
+                    string json = Decode(File.ReadAllText(backupPath));
+                    var data = JsonUtility.FromJson<GameData.Data>(json);
+
+                    if (data != null && data.version == GameData.VERSION)
+                        return data;
+                }
+            }
+            catch { }
+
+            return CreateDefault();
         }
 
-        private string ConvertJsonToRech(string json)
+        GameData.Data CreateDefault()
+        {
+            var def = new GameData.Data();
+            WriteToFile(def);
+            return def;
+        }
+
+        string Encode(string json)
         {
             byte[] bytes = Encoding.UTF8.GetBytes(json);
-            StringBuilder sb = new StringBuilder(bytes.Length * 4);
+            StringBuilder sb = new(bytes.Length * 4);
 
             foreach (byte b in bytes)
             {
-                int highBits = (b >> 6) & 0b11;
-                int midBits = (b >> 4) & 0b11;
-                int lowBits1 = (b >> 2) & 0b11;
-                int lowBits2 = b & 0b11;
-
-                sb.Append(rechAlphabet[highBits]);
-                sb.Append(rechAlphabet[midBits]);
-                sb.Append(rechAlphabet[lowBits1]);
-                sb.Append(rechAlphabet[lowBits2]);
+                sb.Append(rechAlphabet[(b >> 6) & 3]);
+                sb.Append(rechAlphabet[(b >> 4) & 3]);
+                sb.Append(rechAlphabet[(b >> 2) & 3]);
+                sb.Append(rechAlphabet[b & 3]);
             }
 
             return sb.ToString();
         }
 
-        private string ConvertRechToJson(string rechData)
+        string Decode(string rech)
         {
-            if (rechData.Length % 4 != 0)
-                throw new FormatException("Invalid RECH format");
+            byte[] bytes = new byte[rech.Length / 4];
 
-            byte[] bytes = new byte[rechData.Length / 4];
-            for (int i = 0; i < rechData.Length; i += 4)
+            for (int i = 0; i < rech.Length; i += 4)
             {
-                int highBits = Array.IndexOf(rechAlphabet, rechData[i]);
-                int midBits = Array.IndexOf(rechAlphabet, rechData[i + 1]);
-                int lowBits1 = Array.IndexOf(rechAlphabet, rechData[i + 2]);
-                int lowBits2 = Array.IndexOf(rechAlphabet, rechData[i + 3]);
-
-                bytes[i / 4] = (byte)((highBits << 6) | (midBits << 4) | (lowBits1 << 2) | lowBits2);
+                bytes[i / 4] = (byte)(
+                    (Map(rech[i]) << 6) |
+                    (Map(rech[i + 1]) << 4) |
+                    (Map(rech[i + 2]) << 2) |
+                    Map(rech[i + 3])
+                );
             }
 
             return Encoding.UTF8.GetString(bytes);
+        }
+
+        int Map(char c)
+        {
+            return c switch
+            {
+                'R' => 0,
+                'E' => 1,
+                'C' => 2,
+                'H' => 3,
+                _ => throw new Exception("Invalid RECH char")
+            };
         }
     }
 }

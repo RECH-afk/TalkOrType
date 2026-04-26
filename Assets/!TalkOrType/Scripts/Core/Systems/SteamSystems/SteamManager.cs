@@ -12,11 +12,11 @@ namespace RKS.TalkOrType.Core.Managers
             try
             {
                 SteamClient.Init(APP_ID);
-                Debug.Log($"[SteamManager] Successful initialization! Player: {SteamClient.Name}");
+                Debug.Log($"[SteamManager] I'm ready! Steam player: {SteamClient.Name}");
             }
             catch (System.Exception e)
             {
-                Debug.LogError($"[SteamManager] Initialization error: {e.Message}");
+                Debug.LogError($"[SteamManager] I couldn't initialize. Error: {e.Message}");
             }
         }
 

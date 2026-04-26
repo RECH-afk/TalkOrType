@@ -16,19 +16,19 @@ namespace RKS.TalkOrType.Core
 
             if (!showIntro)
             {
-                Debug.Log("[IntroBootstrap] Intro disabled. Skipping to next scene.");
+                Debug.Log("[Bootstrap] Intro disabled. Skipping to next scene.");
                 LoadNextScene();
                 return;
             }
 
             if (videoPlayer == null)
             {
-                Debug.LogWarning("[IntroBootstrap] VideoPlayer is not assigned. Skipping intro.");
+                Debug.LogWarning("[Bootstrap] VideoPlayer is not assigned. Skipping intro.");
                 LoadNextScene();
                 return;
             }
 
-            Debug.Log("[IntroBootstrap] Starting intro video...");
+            Debug.Log("[Bootstrap] Starting intro video...");
             videoPlayer.loopPointReached += OnIntroFinished;
             videoPlayer.Play();
         }
@@ -48,7 +48,7 @@ namespace RKS.TalkOrType.Core
             };
 
             DiscordRPC.details = message;
-            Debug.Log("[IntroBootstrap] Discord initialized with message: " + message);
+            Debug.Log("[Bootstrap] Discord initialized with message: " + message);
         }
 
         private void InitializeSaveData()
@@ -57,12 +57,12 @@ namespace RKS.TalkOrType.Core
                 Save.Load();
 
             Save.Write();
-            Debug.Log("[IntroBootstrap] Save data initialized.");
+            Debug.Log("[Bootstrap] Save data initialized.");
         }
 
         private void OnIntroFinished(VideoPlayer source)
         {
-            Debug.Log("[IntroBootstrap] Intro video finished.");
+            Debug.Log("[Bootstrap] Intro video finished.");
             LoadNextScene();
         }
 
@@ -87,7 +87,7 @@ namespace RKS.TalkOrType.Core
             //         return;
             //     }
 
-            Debug.Log("[IntroBootstrap] Loading main menu...");
+            Debug.Log("[Bootstrap] Loading main menu...");
             Transition?.LoadScene("IsMenuScene");
         }
     }

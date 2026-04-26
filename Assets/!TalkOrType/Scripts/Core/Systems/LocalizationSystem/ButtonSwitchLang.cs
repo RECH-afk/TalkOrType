@@ -1,30 +1,16 @@
-using RKS.TalkOrType.Core;
 using UnityEngine;
+using Zenject;
+using RKS.TalkOrType.Core.Managers;
 
-[DisallowMultipleComponent]
-public sealed class ButtonSwitchLang : RKSBehaviour
+public class ButtonSwitchLang : MonoBehaviour
 {
     [SerializeField] private string languageCode;
 
-    public void OnButtonClick()
+    [Inject] private LocalizationManager _loc;
+
+    public void OnClick()
     {
-        if (Localization == null)
-        {
-            return;
-        }
-
-        string targetLang = string.IsNullOrWhiteSpace(languageCode) ? gameObject.name : languageCode;
-
-        if (string.IsNullOrWhiteSpace(targetLang))
-        {
-            return;
-        }
-
-        if (Localization.currentLanguage == targetLang)
-        {
-            return;
-        }
-
-        Localization.SetLanguage(targetLang);
+        if (!string.IsNullOrWhiteSpace(languageCode))
+            _loc.SetLanguage(languageCode);
     }
 }

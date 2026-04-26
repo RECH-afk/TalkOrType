@@ -1,5 +1,7 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -8,109 +10,153 @@ namespace RKS.TalkOrType.Core.Managers
     public class LocalizationManager : RKSBehaviour
     {
         public string currentLanguage { get; private set; }
-        private Dictionary<string, string> localizedText = new Dictionary<string, string>();
-        public static bool isReady = false;
 
-        public delegate void ChangeLangText();
-        public event ChangeLangText OnLanguageChanged;
+        private readonly Dictionary<string, string> _current = new();
+        private readonly Dictionary<string, string> _fallback = new();
+
+        public event Action OnLanguageChanged;
+
+        const string FALLBACK_LANG = "en_US";
+
+        private bool _isLoading;    
+
 
         protected override void OnReady()
         {
-            Save.Load();
-
-            if (string.IsNullOrEmpty(Save.CurrentData.language))
-            {
-                switch (Application.systemLanguage)
-                {
-                    case SystemLanguage.Russian:
-                    case SystemLanguage.Ukrainian:
-                    case SystemLanguage.Belarusian:
-                        Save.CurrentData.language = "ru_RU";
-                        break;
-
-                    case SystemLanguage.German:
-                        Save.CurrentData.language = "de_DE";
-                        break;
-
-                    case SystemLanguage.Spanish:
-                        Save.CurrentData.language = "es_ES";
-                        break;
-
-                    default:
-                        Save.CurrentData.language = "en_US";
-                        break;
-                }
-
-                Save.Write();
-            }
-
-            currentLanguage = Save.CurrentData.language;
-            StartCoroutine(LoadLocalizedTextCoroutine(currentLanguage));
+            LoadInitialLanguage();
         }
 
-        private IEnumerator<UnityWebRequestAsyncOperation> LoadLocalizedTextCoroutine(string langName)
+        void LoadInitialLanguage()
         {
-            string path = Path.Combine(Application.streamingAssetsPath, "Languages", langName + ".json");
-            string dataAsJson = "";
+            var lang = string.IsNullOrEmpty(Save.CurrentData.language)
+                ? GetSystemLanguage()
+                : Save.CurrentData.language;
+
+            SetLanguage(lang);
+        }
+
+        string GetSystemLanguage()
+        {
+            return Application.systemLanguage switch
+            {
+                SystemLanguage.Russian => "ru_RU",
+                SystemLanguage.German => "de_DE",
+                SystemLanguage.Spanish => "es_ES",
+                _ => FALLBACK_LANG
+            };
+        }
+        
+
+        public async void SetLanguage(string lang)
+        {
+            if (string.IsNullOrWhiteSpace(lang))
+                return;
+
+            if (lang == currentLanguage)
+                return;
+
+            if (_isLoading)
+                return;
+
+            _isLoading = true;
+
+            currentLanguage = lang;
+
+            Save.CurrentData.language = lang;
+            Save.Write();
+
+            _current.Clear();
+            _fallback.Clear();
+
+            try
+            {
+                await LoadLanguage(lang, _current);
+
+                if (lang != FALLBACK_LANG)
+                    await LoadLanguage(FALLBACK_LANG, _fallback);
+
+                OnLanguageChanged?.Invoke();
+                Debug.Log($"[LocalizationManager] I'm ready! Language: {currentLanguage}");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[LocalizationManager] I ran into an error here: {ex.Message}");
+            }
+            finally
+            {
+                _isLoading = false;
+            }
+        }
+
+        async Task LoadLanguage(string lang, Dictionary<string, string> target)
+        {
+            string path = Path.Combine(Application.streamingAssetsPath, "Languages", lang + ".json");
+
+            string json;
 
             if (Application.platform == RuntimePlatform.Android)
             {
-                using (UnityWebRequest www = UnityWebRequest.Get(path))
+                using var www = UnityWebRequest.Get(path);
+                var op = www.SendWebRequest();
+
+                while (!op.isDone)
+                    await Task.Yield();
+
+                if (www.result != UnityWebRequest.Result.Success)
                 {
-                    yield return www.SendWebRequest();
-
-                    if (www.result != UnityWebRequest.Result.Success)
-                    {
-                        Debug.LogError($"[LocalizationManager] Failed to load {langName}: {www.error}");
-                        yield break;
-                    }
-
-                    dataAsJson = www.downloadHandler.text;
+                    Debug.LogError($"[LocalizationManager] Failed load: {lang}");
+                    return;
                 }
+
+                json = www.downloadHandler.text;
             }
             else
             {
                 if (!File.Exists(path))
                 {
-                    Debug.LogError($"[LocalizationManager] Missing language file: {path}");
-                    yield break;
+                    Debug.LogError($"[LocalizationManager] I can't find the translation file at this path: {path}. I'm continuing my work.");
+                    return;
                 }
 
-                dataAsJson = File.ReadAllText(path);
+                json = File.ReadAllText(path);
             }
 
-            LocalizationData loadedData = JsonUtility.FromJson<LocalizationData>(dataAsJson);
-            localizedText.Clear();
+            var data = JsonUtility.FromJson<LocalizationData>(json);
 
-            foreach (var item in loadedData.items)
+            if (data?.items == null)
+                return;
+
+            foreach (var item in data.items)
             {
-                localizedText[item.key] = item.value;
+                target[item.key] = item.value;
             }
-
-            currentLanguage = langName;
-            isReady = true;
-            OnLanguageChanged?.Invoke();
-
-            Debug.Log($"[LocalizationManager] Language loaded: {langName}");
         }
 
-        public void SetLanguage(string langName)
+        public string Get(string key, params object[] args)
         {
-            if (langName == currentLanguage) return;
+            if (_current.TryGetValue(key, out var value))
+                return Format(value, args);
 
-            Save.CurrentData.language = langName;
-            Save.Write();
-            StartCoroutine(LoadLocalizedTextCoroutine(langName));
-        }
-
-        public string GetLocalizedValue(string key)
-        {
-            if (localizedText.TryGetValue(key, out string value))
-                return value;
+            if (_fallback.TryGetValue(key, out var fallback))
+                return Format(fallback, args);
 
             Debug.LogWarning($"[LocalizationManager] Missing key: {key}");
             return key;
         }
-    }
 
+        string Format(string value, object[] args)
+        {
+            if (args == null || args.Length == 0)
+                return value;
+
+            try
+            {
+                return string.Format(value, args);
+            }
+            catch
+            {
+                return value;
+            }
+        }
+    }
 }

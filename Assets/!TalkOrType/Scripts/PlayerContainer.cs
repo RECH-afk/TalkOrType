@@ -9,7 +9,7 @@ using RKS.TalkOrType.Core.Managers;
 
 namespace RKS.TalkOrType.UI
 {
-    public class PlayerContainer : RKSBehaviour
+    public class LobbyPlayerContainer : RKSBehaviour
     {
         [SerializeField] private TextMeshProUGUI nameText;
         [SerializeField] private RawImage avatarImage;

@@ -3,8 +3,13 @@ namespace RKS.TalkOrType.Core
     [System.Serializable]
     public class GameData
     {
+        public const int VERSION = 1;
+
+        [System.Serializable]
         public class Data
         {
+            public int version = VERSION;
+
             public bool isFirstRun = true;
             public bool isPlayerAgreedPlay = false;
             public string language = "en_US";

@@ -17,7 +17,7 @@ namespace RKS.TalkOrType.Core.Installers
 
         public override void InstallBindings()
         {
-            Debug.Log("[ProjectInstaller] Installing global managers...");
+            Debug.Log("[ProjectInstaller] I'm trying to install global managers...");
 
             Container.Bind<LocalizationManager>().FromComponentInNewPrefab(localizationManagerPrefab).AsSingle().NonLazy();
             Container.Bind<AudioManager>().FromComponentInNewPrefab(audioManagerPrefab).AsSingle().NonLazy();

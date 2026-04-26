@@ -1,54 +1,35 @@
-using RKS.TalkOrType.Core;
-using RKS.TalkOrType.Core.Managers;
 using TMPro;
 using UnityEngine;
+using Zenject;
+using RKS.TalkOrType.Core.Managers;
 
-public class LocalizedText : RKSBehaviour
+[RequireComponent(typeof(TMP_Text))]
+public class LocalizedText : MonoBehaviour
 {
-    [SerializeField]
-    public string key;
+    [SerializeField] private string key;
 
-    private LocalizationManager localizationManager;
-    private TMP_Text text;
+    private TMP_Text _text;
 
-    protected override void OnReady()
+    [Inject] private LocalizationManager _loc;
+
+    void Awake()
     {
-        // ищем объект с тегом LocalizationManager и берем у него компонент LocalizationManager, потом ищем текстмешпро у объекта к которому прикреплен данный скрипт и обновляем текст
+        _text = GetComponent<TMP_Text>();
+    }
 
+    void OnEnable()
+    {
         UpdateText();
-
-        if (localizationManager == null)
-        {
-            localizationManager = GameObject.FindGameObjectWithTag("LocalizationManager").GetComponent<LocalizationManager>();
-        }
-        if (text == null)
-        {
-            text = GetComponent<TMP_Text>();
-        }
-        localizationManager.OnLanguageChanged += UpdateText;
+        _loc.OnLanguageChanged += UpdateText;
     }
 
-    protected override void OnDisposed()
+    void OnDisable()
     {
-        // вызывается при удалении объекта LocalizationManager
-
-        localizationManager.OnLanguageChanged -= UpdateText;
+        _loc.OnLanguageChanged -= UpdateText;
     }
 
-    public virtual void UpdateText()
+    void UpdateText()
     {
-        // метод для обновления текста
-
-        if (gameObject == null) return;
-
-        if (localizationManager == null)
-        {
-            localizationManager = GameObject.FindGameObjectWithTag("LocalizationManager").GetComponent<LocalizationManager>();
-        }
-        if (text == null)
-        {
-            text = GetComponent<TMP_Text>();
-        }
-        text.text = localizationManager.GetLocalizedValue(key);
+        _text.text = _loc.Get(key);
     }
 }

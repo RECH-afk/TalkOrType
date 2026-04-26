@@ -1,3 +1,5 @@
+using Steamworks;
+using System;
 using UnityEngine;
 
 namespace RKS.TalkOrType.Core.Managers
@@ -7,95 +9,133 @@ namespace RKS.TalkOrType.Core.Managers
         [Header("Discord Application Settings")]
         public long applicationID;
 
-        [Header("Rich Presence Details")]
+        [Header("Rich Presence")]
         public string details;
         public string state;
         public string largeImage;
         public string largeText;
 
-        private long time;
         private Discord.Discord discord;
+        private long startTime;
+
+        private bool _isInitialized;
+        private float _updateTimer;
+
+        private const float UPDATE_INTERVAL = 5f;
 
         protected override void OnReady()
         {
-            discord = new Discord.Discord(applicationID, (ulong)Discord.CreateFlags.NoRequireDiscord);
-            time = System.DateTimeOffset.Now.ToUnixTimeMilliseconds();
-
-            UpdateStatus();
+            TryInitDiscord();
         }
+
+        void TryInitDiscord()
+        {
+            try
+            {
+                discord = new Discord.Discord(applicationID, (ulong)Discord.CreateFlags.NoRequireDiscord);
+
+                startTime = DateTimeOffset.Now.ToUnixTimeMilliseconds();
+
+                _isInitialized = true;
+
+                Debug.Log($"[DiscordManager] I'm ready!");
+
+                UpdateStatus();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[DiscordManager] I couldn't initialize. Error: {ex}");
+                discord = null;
+                _isInitialized = false;
+            }
+        }
+
 
         protected override void Update()
         {
-            if (discord == null)
+            if (!_isInitialized || discord == null)
                 return;
-
-            SafeInvoke(UpdateStatus);
 
             try
             {
                 discord.RunCallbacks();
             }
-            catch (System.Exception ex)
+            catch (Exception ex)
             {
-                Debug.LogError($"Discord callbacks error: {ex}");
-                SafeDispose();
+                Debug.LogError($"[DiscordManager] RunCallbacks error: {ex}");
+
+                SafeDisposeDiscord();
+                return;
+            }
+
+            _updateTimer += Time.deltaTime;
+
+            if (_updateTimer >= UPDATE_INTERVAL)
+            {
+                _updateTimer = 0f;
+                SafeInvoke(UpdateStatus);
             }
         }
 
         private void UpdateStatus()
         {
-            var activityManager = discord.GetActivityManager();
+            if (discord == null)
+                return;
 
-            var activity = new Discord.Activity
+            try
             {
-                Details = details,
-                State = state,
-                Assets =
-                {
-                    LargeImage = largeImage,
-                    LargeText = largeText
-                },
-                Timestamps =
-                {
-                    Start = time
-                }
-            };
+                var activityManager = discord.GetActivityManager();
 
-            activityManager.UpdateActivity(activity, res =>
+                var activity = new Discord.Activity
+                {
+                    Details = details,
+                    State = state,
+                    Assets =
+                    {
+                        LargeImage = largeImage,
+                        LargeText = largeText
+                    },
+                    Timestamps =
+                    {
+                        Start = startTime
+                    }
+                };
+
+                activityManager.UpdateActivity(activity, result =>
+                {
+                    if (result != Discord.Result.Ok)
+                        Debug.LogWarning("[DiscordManager] UpdateActivity failed");
+                });
+            }
+            catch (Exception ex)
             {
-                if (res != Discord.Result.Ok)
-                    Debug.LogWarning("Failed connecting to Discord!");
-            });
+                Debug.LogError($"[DiscordManager] UpdateStatus error: {ex}");
+            }
         }
 
         protected override void OnDisposed()
         {
-            SafeDispose();
+            SafeDisposeDiscord();
         }
 
-        private void OnApplicationQuit()
+        void SafeDisposeDiscord()
         {
-            SafeDispose();
-        }
+            if (discord == null)
+                return;
 
-        private void OnDisable()
-        {
-            SafeDispose();
-        }
-
-        private void SafeDispose()
-        {
-            if (discord != null)
+            try
             {
-                try { discord.Dispose(); }
-                catch (System.Exception ex)
-                {
-                    Debug.LogError($"Discord Dispose exception: {ex}");
-                }
-
-                discord = null;
-                Debug.Log("Discord RPC disposed.");
+                discord.Dispose();
             }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[DiscordManager] Dispose error: {ex}");
+            }
+
+            discord = null;
+            _isInitialized = false;
+
+            Debug.Log("[DiscordManager] I'm disposed");
         }
     }
 }

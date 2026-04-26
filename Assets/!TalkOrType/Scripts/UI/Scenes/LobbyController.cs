@@ -13,6 +13,7 @@ namespace RKS.TalkOrType.UI
         [SerializeField] private TextMeshProUGUI codeText;
         [SerializeField] private TextMeshProUGUI lobbyNameText;
         [SerializeField] private TextMeshProUGUI playersCountText;
+        [SerializeField] private GameObject startButton;
 
         [Header("Players List")]
         [SerializeField] private Transform content;
@@ -71,13 +72,15 @@ namespace RKS.TalkOrType.UI
             foreach (var p in _lobby.Players)
             {
                 var go = _container.InstantiatePrefab(playerPrefab, content);
-                var ui = go.GetComponent<PlayerContainer>();
+                var ui = go.GetComponent<LobbyPlayerContainer>();
 
                 bool isHost = lobby.Owner.Id == p.Id;
                 bool canKick = _lobby.IsHost && p.Id != SteamClient.SteamId;
 
                 ui.Setup(p, isHost, canKick, _lobby.Kick);
             }
+
+            startButton.SetActive(_lobby.IsHost);
         }
 
         private void Clear()

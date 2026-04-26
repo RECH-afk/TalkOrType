@@ -72,10 +72,6 @@ namespace RKS.TalkOrType.Core
             }
         }
 
-        protected void Log(string message) => Debug.Log($"[{GetType().Name}] {message}");
-        protected void Warn(string message) => Debug.LogWarning($"[{GetType().Name}] {message}");
-        protected void Error(string message) => Debug.LogError($"[{GetType().Name}] {message}");
-
         protected void SafeInvoke(Action action)
         {
             try { action?.Invoke(); }
